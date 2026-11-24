@@ -1,4 +1,4 @@
-"""Programmatic editorial poster renderer for Monday, 23 November 2026 world news (v3)."""
+"""Dual-scale editorial front-page & 6-continent world dispatch renderer for 23 Nov 2026 (v4)."""
 
 from __future__ import annotations
 
@@ -7,11 +7,13 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
+from world_map_svg import render_world_map_svg
+
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS_DIR = ROOT.parent / "assets"
 OUTPUT_PNG = ROOT / "entry.png"
 PREVIEW_300 = ROOT / "preview_300.png"
-RAW_PNG = ROOT.parent / "raw_1024_v3.png"
+RAW_PNG = ROOT.parent / "raw_1024_v4.png"
 
 
 def encode_image_data_uri(path: Path) -> str:
@@ -21,38 +23,58 @@ def encode_image_data_uri(path: Path) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def world_locator_svg() -> str:
-    """Compact high-contrast world locator with 5 color-matched regional news beacons."""
-    return """
-    <svg width="212" height="72" viewBox="0 0 218 74" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Global news locator">
-      <rect x="0.5" y="0.5" width="217" height="73" rx="3" fill="#0B1928" stroke="#2D4661" stroke-width="1"/>
-      <line x1="0" y1="37" x2="218" y2="37" stroke="#1C3248" stroke-width="0.7" stroke-dasharray="2 3"/>
-      <line x1="109" y1="0" x2="109" y2="74" stroke="#1C3248" stroke-width="0.7" stroke-dasharray="2 3"/>
-      <g fill="#2C4966">
-        <path d="M16 14 L42 12 L56 19 L52 29 L40 34 L34 40 L28 36 L22 27 Z"/>
-        <path d="M44 43 L56 44 L63 54 L56 67 L49 69 L45 57 Z"/>
-        <path d="M92 14 L116 12 L123 19 L118 26 L104 27 L94 24 Z"/>
-        <path d="M92 31 L114 31 L124 41 L118 59 L109 65 L100 54 L94 42 Z"/>
-        <path d="M120 14 L164 13 L184 22 L177 35 L162 43 L149 41 L141 47 L133 39 L123 36 L119 27 Z"/>
-        <path d="M181 26 L187 24 L189 31 L183 32 Z"/>
-        <path d="M164 46 L176 47 L179 51 L167 51 Z"/>
-        <path d="M174 55 L195 54 L199 64 L185 67 L174 63 Z"/>
-      </g>
-      <circle cx="44" cy="24" r="7" fill="#10B981" fill-opacity="0.32"/>
-      <circle cx="44" cy="24" r="3.8" fill="#34E0A1" stroke="#08131E" stroke-width="1"/>
-      <circle cx="107" cy="28" r="7" fill="#E04F3A" fill-opacity="0.32"/>
-      <circle cx="107" cy="28" r="3.8" fill="#FF6B54" stroke="#08131E" stroke-width="1"/>
-      <circle cx="131" cy="34" r="7" fill="#F29F3D" fill-opacity="0.32"/>
-      <circle cx="131" cy="34" r="3.8" fill="#FBBF5A" stroke="#08131E" stroke-width="1"/>
-      <circle cx="118" cy="25" r="6" fill="#2DD4BF" fill-opacity="0.32"/>
-      <circle cx="118" cy="25" r="3.4" fill="#2DD4BF" stroke="#08131E" stroke-width="1"/>
-      <circle cx="166" cy="33" r="7" fill="#60A5FA" fill-opacity="0.32"/>
-      <circle cx="166" cy="33" r="3.8" fill="#60A5FA" stroke="#08131E" stroke-width="1"/>
-    </svg>
-    """
+def build_brief_item(num: int, lead: str, body: str, color: str) -> str:
+    return (
+        f'<li class="brief-item">'
+        f'<span class="b-num" style="background:{color}">{num}</span>'
+        f'<span class="b-text"><strong>{lead}</strong> {body}</span>'
+        f'</li>'
+    )
 
 
-def build_html(images: dict[str, str]) -> str:
+def build_html(images: dict[str, str], map_svg: str) -> str:
+    americas_items = "".join([
+        build_brief_item(6, "U.S. House:", "Democrats clinch 258 seats after NC recount&mdash;largest majority since 1992.", "#0C7C55"),
+        build_brief_item(7, "Wall St. AI:", "JPMorgan, BofA &amp; Citi add kill switches and strict walls on AI agents.", "#0C7C55"),
+        build_brief_item(8, "Colombia:", "Drone attack hits C&uacute;cuta police base, injuring civilians &amp; damaging homes.", "#0C7C55"),
+        build_brief_item(9, "Argentina&ndash;Brazil:", "PAE signs Vaca Muerta shale gas supply deal to Rio via Bolivia.", "#0C7C55"),
+    ])
+
+    europe_items = "".join([
+        build_brief_item(10, "NATO / Poland:", "Emergency Brussels session deploys AWACS after Russian missile incursion.", "#C83E2B"),
+        build_brief_item(11, "UK Parliament:", "PM Andy Burnham defends EU reset deal; rules out rejoin without vote.", "#C83E2B"),
+        build_brief_item(12, "Manchester:", "Irritant gas evacuates 12,000 fans at Co-op Live concert; 80+ treated.", "#C83E2B"),
+        build_brief_item(13, "EU / Paris:", "EU tightens AI chip export controls; Paris summit backs 2% wealth tax.", "#C83E2B"),
+    ])
+
+    middle_east_items = "".join([
+        build_brief_item(14, "Turkey / N. Iraq:", "Ankara reports PKK vacated 14 Hakurk bases in disarmament push.", "#B85914"),
+        build_brief_item(15, "Israel:", "PM-designate Eisenkot sees no imminent Iran threat, tempering strike calls.", "#B85914"),
+        build_brief_item(16, "Gaza &amp; Lebanon:", "Localized IDF raids in Gaza &amp; West Bank; south Lebanon truce strained.", "#B85914"),
+        build_brief_item(17, "Energy / Gulf:", "Oil steadies as Hormuz tanker fires &amp; shipping risks offset slowdown fears.", "#B85914"),
+    ])
+
+    africa_items = "".join([
+        build_brief_item(18, "Libya / UN:", "Eastern Libyan government files formal UN complaint over Benghazi strike.", "#9C3D54"),
+        build_brief_item(19, "DR Congo:", "Heavy fighting near Ituri hospitals forces WHO emergency teams to shelter.", "#9C3D54"),
+        build_brief_item(20, "Nigeria:", "Northwest security worsens with Zamfara/Niger abductions &amp; fatal boat capsize.", "#9C3D54"),
+        build_brief_item(21, "North Africa:", "AfDB launches MSME investment push in Morocco &amp; Egypt; mineral race grows.", "#9C3D54"),
+    ])
+
+    asia_items = "".join([
+        build_brief_item(22, "Asia Markets:", "Tech relief rally lifts Taiwan +9%, KOSPI +7.5% and Nikkei +4.5%.", "#264B8A"),
+        build_brief_item(23, "Bangladesh:", "Factional clashes in Jhenaidah &amp; Gopalganj injure 35+ with crude bombs.", "#264B8A"),
+        build_brief_item(24, "Philippines:", "Visayas power grid hits red alert; Quad maritime talks held in Manila.", "#264B8A"),
+        build_brief_item(25, "China / Taiwan:", "Taipei flags cross-strait travel before Nov 28 vote; IAEA AUKUS query.", "#264B8A"),
+    ])
+
+    oceania_sci_items = "".join([
+        build_brief_item(26, "FIFA 2031/35:", "Congress confirms U.S.-led Americas host 2031 Women&rsquo;s World Cup; UK 2035.", "#157770"),
+        build_brief_item(27, "NZ / India Cricket:", "India&rsquo;s 720/9 d. sets NZ record; Black Caps bat 120 overs for draw.", "#157770"),
+        build_brief_item(28, "ALMA Space:", "Chile array detects first gaseous rock-forming TiO around young star Orion I.", "#157770"),
+        build_brief_item(29, "Earth &amp; Health:", "PNAS finds ancient core carbon in Hawaii lava; WHO flags EU climate distress.", "#157770"),
+    ])
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -72,7 +94,7 @@ def build_html(images: dict[str, str]) -> str:
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }}
-  .poster {{
+  .page {{
     width: 1024px;
     height: 1024px;
     display: flex;
@@ -80,14 +102,14 @@ def build_html(images: dict[str, str]) -> str:
     background: #F6F1E6;
   }}
 
-  /* BOLD COLLECTOR MASTHEAD */
+  /* 1. MASTHEAD (76px) */
   .masthead {{
-    height: 102px;
+    height: 76px;
     background: linear-gradient(180deg, #09131F 0%, #102033 100%);
-    color: #FFFBF2;
-    border-top: 6px solid #D13D2A;
-    border-bottom: 3.5px solid #DDA02C;
-    padding: 0 22px;
+    color: #FFFFFF;
+    border-top: 5px solid #D13D2A;
+    border-bottom: 3px solid #DDA02C;
+    padding: 0 18px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -98,73 +120,80 @@ def build_html(images: dict[str, str]) -> str:
     justify-content: center;
   }}
   .mast-kicker {{
-    font-size: 14px;
+    font-size: 11.5px;
     font-weight: 800;
-    letter-spacing: 2.8px;
+    letter-spacing: 2.4px;
     color: #F6C255;
     text-transform: uppercase;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
   }}
   .mast-date {{
     font-family: Georgia, Cambria, "Times New Roman", serif;
     font-variant-numeric: lining-nums;
-    font-size: 48px;
+    font-size: 36px;
     font-weight: 900;
     letter-spacing: 0.4px;
-    line-height: 0.96;
+    line-height: 0.98;
     color: #FFFFFF;
   }}
-  .mast-date .day-accent {{
-    color: #F7C25B;
-  }}
+  .mast-date .day-accent {{ color: #F7C25B; }}
   .mast-right {{
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }}
-  .mast-meta {{
     text-align: right;
-  }}
-  .mast-title {{
-    font-family: Georgia, Cambria, "Times New Roman", serif;
-    font-size: 21px;
-    font-weight: 900;
-    letter-spacing: 1px;
-    color: #FFFFFF;
-    line-height: 1.1;
-  }}
-  .mast-sub {{
-    margin-top: 4px;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.1px;
-    color: #B4C6D8;
-    text-transform: uppercase;
-    line-height: 1.3;
-  }}
-
-  /* BODY CONTAINER */
-  .content {{
-    flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0 18px;
+    align-items: flex-end;
+    justify-content: center;
+  }}
+  .mast-brand {{
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-size: 23px;
+    font-weight: 900;
+    letter-spacing: 0.9px;
+    color: #FFFFFF;
+    line-height: 1.05;
+  }}
+  .mast-badge {{
+    margin-top: 4px;
+    background: #1B334D;
+    border: 1px solid #DDA02C;
+    color: #F8D17B;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 2px 9px;
+    border-radius: 2px;
+    text-transform: uppercase;
   }}
 
-  /* HERO FEATURE (LARGE CINEMATIC ART + ULTRA-LEGIBLE HEADLINE & STATS) */
-  .hero {{
-    height: 292px;
+  /* BODY WRAPPER */
+  .main {{
+    flex: 1;
+    padding: 10px 14px 10px 14px;
     display: flex;
-    padding: 13px 0;
-    border-bottom: 3px solid #0F1D2D;
-    gap: 18px;
+    flex-direction: column;
+    gap: 9px;
+  }}
+
+  /* 2. TOP ROW: HERO + ANNOTATED WORLD ATLAS (206px) */
+  .top-row {{
+    height: 206px;
+    display: grid;
+    grid-template-columns: 586px 398px;
+    gap: 12px;
+  }}
+  .hero {{
+    background: #FFFDF8;
+    border: 1.5px solid #C8BFA9;
+    border-left: 5px solid #0C7C55;
+    display: flex;
+    overflow: hidden;
   }}
   .hero-art {{
-    width: 472px;
+    width: 248px;
     height: 100%;
+    position: relative;
     flex-shrink: 0;
     background: #0D1B2A;
-    border: 1.5px solid #1C3147;
     overflow: hidden;
   }}
   .hero-art img {{
@@ -174,329 +203,390 @@ def build_html(images: dict[str, str]) -> str:
     object-position: center 46%;
     display: block;
   }}
+  .art-pin {{
+    position: absolute;
+    top: 7px;
+    left: 7px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  }}
   .hero-copy {{
     flex: 1;
+    padding: 9px 12px 9px 13px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
   }}
-  .hero-kicker-row {{
+  .hero-kicker {{
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 7px;
   }}
-  .badge-solid {{
-    background: #0B7A54;
+  .pill {{
+    background: #0C7C55;
     color: #FFFFFF;
-    font-size: 13.5px;
+    font-size: 11px;
     font-weight: 900;
-    letter-spacing: 1.3px;
-    padding: 4px 10px;
+    letter-spacing: 1px;
+    padding: 2px 7px;
     text-transform: uppercase;
   }}
-  .hero-region {{
-    font-size: 13.5px;
+  .hero-loc {{
+    font-size: 11px;
     font-weight: 800;
-    letter-spacing: 0.9px;
-    color: #3E5063;
+    color: #4A5C6E;
+    letter-spacing: 0.7px;
     text-transform: uppercase;
   }}
   .hero-hl {{
     font-family: Georgia, Cambria, "Times New Roman", serif;
     font-variant-numeric: lining-nums;
-    font-size: 36px;
+    font-size: 24.5px;
     font-weight: 900;
-    line-height: 1.06;
-    color: #08111B;
+    line-height: 1.08;
+    color: #09121C;
   }}
   .hero-stats {{
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 9px;
+    gap: 6px;
   }}
-  .stat-box {{
-    background: #0B1927;
-    padding: 7px 8px;
+  .stat-cell {{
+    background: #0C1B2A;
+    padding: 4px 5px;
     text-align: center;
-    border-bottom: 4px solid #1AC88A;
+    border-bottom: 3px solid #18C386;
   }}
   .stat-k {{
-    font-size: 12px;
+    font-size: 9.8px;
     font-weight: 800;
-    letter-spacing: 1.1px;
-    color: #A7BFD5;
+    letter-spacing: 0.8px;
+    color: #A2BAD0;
     text-transform: uppercase;
   }}
   .stat-v {{
-    font-size: 25px;
+    font-size: 18.5px;
     font-weight: 900;
-    color: #3BE8A9;
+    color: #38E4A6;
     line-height: 1.08;
-    margin-top: 1px;
     font-variant-numeric: lining-nums;
   }}
   .hero-deck {{
-    font-size: 18.5px;
+    font-size: 13px;
     line-height: 1.22;
     color: #162330;
     font-weight: 600;
   }}
 
-  /* 2x2 LARGE-ART BROADSHEET GRID */
-  .grid {{
-    flex: 1;
+  .map-box {{
+    border: 1.5px solid #1E3650;
+    background: #0B1928;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }}
+
+  /* 3. MIDDLE ROW: 4 ILLUSTRATED MAJOR STORIES (222px) */
+  .mid-row {{
+    height: 222px;
     display: grid;
-    grid-template-columns: 1fr 1.5px 1fr;
-    grid-template-rows: 1fr 1.5px 1fr;
-    padding: 10px 0 8px 0;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
   }}
-  .v-line {{
-    background: #C2B8A3;
-    grid-column: 2;
-    grid-row: 1 / 4;
-  }}
-  .h-line {{
-    background: #C2B8A3;
-    grid-column: 1 / 4;
-    grid-row: 2;
-  }}
-  .cell {{
+  .mcard {{
+    background: #FFFDF8;
+    border: 1.3px solid #C8BFA9;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }}
-  .c-tl {{ grid-column: 1; grid-row: 1; padding: 0 14px 9px 0; }}
-  .c-tr {{ grid-column: 3; grid-row: 1; padding: 0 0 9px 14px; }}
-  .c-bl {{ grid-column: 1; grid-row: 3; padding: 9px 14px 0 0; }}
-  .c-br {{ grid-column: 3; grid-row: 3; padding: 9px 0 0 14px; }}
+  .mc-geo {{ border-top: 4px solid #C83E2B; }}
+  .mc-me {{ border-top: 4px solid #B85914; }}
+  .mc-cli {{ border-top: 4px solid #157770; }}
+  .mc-asia {{ border-top: 4px solid #264B8A; }}
 
-  .cell-art {{
-    height: 192px;
+  .mcard-art {{
+    height: 114px;
     width: 100%;
+    position: relative;
     overflow: hidden;
-    border: 1px solid #C0B6A2;
     flex-shrink: 0;
   }}
-  .cell-art img {{
+  .mcard-art img {{
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }}
-  .art-libya {{ background: #182C40; }}
-  .art-libya img {{ object-position: center 46%; }}
-  .art-hormuz {{ background: #103542; }}
-  .art-hormuz img {{ object-position: center 35%; }}
-  .art-cop31 {{ background: #192B37; }}
-  .art-cop31 img {{ object-fit: contain !important; object-position: center center; }}
-  .art-asia {{ background: #13213C; }}
-  .art-asia img {{ object-position: center 54%; }}
+  .ma-libya {{ background: #182C40; }}
+  .ma-libya img {{ object-position: center 46%; }}
+  .ma-hormuz {{ background: #103542; }}
+  .ma-hormuz img {{ object-position: center 35%; }}
+  .ma-cop31 {{ background: #192B37; }}
+  .ma-cop31 img {{ object-fit: contain !important; object-position: center center; }}
+  .ma-asia {{ background: #13213C; }}
+  .ma-asia img {{ object-position: center 54%; }}
 
-  .cell-copy {{
+  .mcard-body {{
     flex: 1;
-    padding-top: 6px;
+    padding: 6px 9px 7px 9px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
   }}
-  .cell-kicker-row {{
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }}
-  .dot {{
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }}
-  .dot-geo {{ background: #D13D2A; }}
-  .dot-me {{ background: #C25D10; }}
-  .dot-climate {{ background: #147E76; }}
-  .dot-asia {{ background: #234C96; }}
-
-  .cell-kicker {{
-    font-size: 13px;
+  .mcard-kicker {{
+    font-size: 10.2px;
     font-weight: 900;
-    letter-spacing: 1.3px;
+    letter-spacing: 0.9px;
     text-transform: uppercase;
   }}
-  .k-geo {{ color: #B42B1A; }}
-  .k-me {{ color: #A14A09; }}
-  .k-climate {{ color: #0E6A63; }}
-  .k-asia {{ color: #193E80; }}
+  .mk-geo {{ color: #B82E1D; }}
+  .mk-me {{ color: #A64D0B; }}
+  .mk-cli {{ color: #0F6B64; }}
+  .mk-asia {{ color: #1B4185; }}
 
-  .cell-hl {{
+  .mcard-hl {{
     font-family: Georgia, Cambria, "Times New Roman", serif;
     font-variant-numeric: lining-nums;
-    font-size: 24px;
-    font-weight: 900;
-    line-height: 1.08;
-    color: #08111B;
-    white-space: nowrap;
-  }}
-  .cell-fact {{
     font-size: 17.5px;
-    line-height: 1.16;
-    color: #1C2A38;
-    font-weight: 600;
-    white-space: nowrap;
+    font-weight: 900;
+    line-height: 1.09;
+    color: #08111B;
+  }}
+  .mcard-desc {{
+    font-size: 12px;
+    line-height: 1.18;
+    color: #1F2D3B;
+    font-weight: 500;
   }}
 
-  /* ULTRA-CRISP COMPACT WIRE RIBBON */
-  .ribbon {{
-    height: 50px;
-    background: #0C1A2A;
-    border-top: 3px solid #DDA02C;
-    padding: 0 20px;
+  /* 4. BOTTOM MATRIX: SYMMETRIC 6 CONTINENTS x 4 BRIEFS = 24 REGIONAL STORIES (482px) */
+  .continent-grid {{
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr 1fr;
+    gap: 9px 10px;
+  }}
+  .region-box {{
+    background: #FFFDF9;
+    border: 1.2px solid #CCC3AE;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }}
+  .region-hdr {{
+    height: 26px;
+    padding: 0 9px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: #F7F3EA;
-  }}
-  .ribbon-item {{
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-  }}
-  .ribbon-tag {{
-    background: #1C3550;
-    color: #F7C25B;
-    font-size: 12px;
+    color: #FFFFFF;
+    font-size: 12.8px;
     font-weight: 900;
-    letter-spacing: 1.2px;
-    padding: 3px 8px;
+    letter-spacing: 1px;
     text-transform: uppercase;
-    border-radius: 2px;
+    flex-shrink: 0;
   }}
-  .ribbon-sep {{
-    width: 2px;
-    height: 24px;
-    background: rgba(255, 255, 255, 0.24);
+  .rh-am {{ background: #0C7C55; }}
+  .rh-eu {{ background: #C83E2B; }}
+  .rh-me {{ background: #B85914; }}
+  .rh-af {{ background: #9C3D54; }}
+  .rh-as {{ background: #264B8A; }}
+  .rh-oc {{ background: #157770; }}
+
+  .region-count {{
+    font-size: 9.8px;
+    font-weight: 800;
+    opacity: 0.92;
+    letter-spacing: 0.6px;
+  }}
+  .brief-list {{
+    list-style: none;
+    flex: 1;
+    padding: 5px 8px 5px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }}
+  .brief-item {{
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #EAE3D5;
+  }}
+  .brief-item:last-child {{
+    border-bottom: none;
+    padding-bottom: 0;
+  }}
+  .b-num {{
+    min-width: 18px;
+    height: 17px;
+    border-radius: 3px;
+    color: #FFFFFF;
+    font-size: 10.2px;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-variant-numeric: lining-nums;
+  }}
+  .b-text {{
+    font-size: 12.2px;
+    line-height: 1.19;
+    color: #121E2B;
+    font-weight: 500;
+  }}
+  .b-text strong {{
+    color: #060D16;
+    font-weight: 800;
   }}
 </style>
 </head>
 <body>
-  <div class="poster">
+  <div class="page">
     <header class="masthead">
       <div class="mast-left">
         <div class="mast-kicker">MONDAY · WORLD NEWS IN ONE IMAGE</div>
         <div class="mast-date"><span class="day-accent">23</span> NOVEMBER 2026</div>
       </div>
       <div class="mast-right">
-        <div class="mast-meta">
-          <div class="mast-title">WORLD DISPATCH</div>
-          <div class="mast-sub">6 REGIONS · MARKETS<br/>WAR · CLIMATE · TECH</div>
-        </div>
-        {world_locator_svg()}
+        <div class="mast-brand">WORLD DISPATCH</div>
+        <div class="mast-badge">6 CONTINENTS · 29 VERIFIED STORIES · GLOBAL ATLAS</div>
       </div>
     </header>
 
-    <main class="content">
-      <section class="hero">
-        <div class="hero-art">
-          <img src="{images['hero']}" alt="Nvidia rally and Wall Street surge" />
-        </div>
-        <div class="hero-copy">
-          <div class="hero-kicker-row">
-            <span class="badge-solid">MARKETS · AI</span>
-            <span class="hero-region">NEW YORK &amp; GLOBAL CHIPS</span>
+    <main class="main">
+      <section class="top-row">
+        <article class="hero">
+          <div class="hero-art">
+            <img src="{images['hero']}" alt="Nvidia rally and Wall Street rebound" />
+            <span class="art-pin" style="background:#0C7C55">1</span>
           </div>
-          <h1 class="hero-hl">Nvidia Reinstates Jensen Huang; Wall Street Surges</h1>
-          <div class="hero-stats">
-            <div class="stat-box">
-              <div class="stat-k">NVIDIA</div>
-              <div class="stat-v">+31.5%</div>
+          <div class="hero-copy">
+            <div class="hero-kicker">
+              <span class="pill">MARKETS · AI</span>
+              <span class="hero-loc">NEW YORK &amp; GLOBAL</span>
             </div>
-            <div class="stat-box">
-              <div class="stat-k">NASDAQ</div>
-              <div class="stat-v">+6.5%</div>
+            <h1 class="hero-hl">Nvidia Reinstates Jensen Huang; Wall Street Surges</h1>
+            <div class="hero-stats">
+              <div class="stat-cell">
+                <div class="stat-k">NVIDIA</div>
+                <div class="stat-v">+31.5%</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-k">NASDAQ</div>
+                <div class="stat-v">+6.5%</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-k">S&amp;P 500</div>
+                <div class="stat-v">+4.7%</div>
+              </div>
             </div>
-            <div class="stat-box">
-              <div class="stat-k">S&amp;P 500</div>
-              <div class="stat-v">+4.7%</div>
-            </div>
+            <p class="hero-deck">Unanimous board reversal adds $952B after White House assurances; Dow surges +1,448 pts (+3.0%).</p>
           </div>
-          <p class="hero-deck">Unanimous board reversal adds $952B and sparks global chip rebound.</p>
+        </article>
+
+        <div class="map-box">
+          {map_svg}
         </div>
       </section>
 
-      <section class="grid">
-        <div class="v-line"></div>
-        <div class="h-line"></div>
-
-        <article class="cell c-tl">
-          <div class="cell-art art-libya">
-            <img src="{images['libya']}" alt="Ukraine sea drones sink Russian warship Merkury in Libya" />
+      <section class="mid-row">
+        <article class="mcard mc-geo">
+          <div class="mcard-art ma-libya">
+            <img src="{images['libya']}" alt="Ukraine sea drones sink Russian warship Merkury in Benghazi" />
+            <span class="art-pin" style="background:#C83E2B">2</span>
           </div>
-          <div class="cell-copy">
-            <div class="cell-kicker-row">
-              <span class="dot dot-geo"></span>
-              <span class="cell-kicker k-geo">EUROPE · NORTH AFRICA</span>
-            </div>
-            <h2 class="cell-hl">Ukraine Sinks Warship in Libya</h2>
-            <p class="cell-fact">7 sea drones sink Russia&rsquo;s <em>Merkury</em> 2,400 km away.</p>
+          <div class="mcard-body">
+            <div class="mcard-kicker mk-geo">EUROPE · N. AFRICA</div>
+            <h2 class="mcard-hl">Ukraine Sinks Russian Warship in Libya</h2>
+            <p class="mcard-desc">7 sea drones sink <em>Merkury</em> in Benghazi (2,400 km away); refineries hit.</p>
           </div>
         </article>
 
-        <article class="cell c-tr">
-          <div class="cell-art art-hormuz">
-            <img src="{images['hormuz']}" alt="Strait of Hormuz U.S.-Iran naval blockade" />
+        <article class="mcard mc-me">
+          <div class="mcard-art ma-hormuz">
+            <img src="{images['hormuz']}" alt="Strait of Hormuz U.S.-Iran blockade standoff" />
+            <span class="art-pin" style="background:#B85914">3</span>
           </div>
-          <div class="cell-copy">
-            <div class="cell-kicker-row">
-              <span class="dot dot-me"></span>
-              <span class="cell-kicker k-me">MIDDLE EAST · SECURITY</span>
-            </div>
-            <h2 class="cell-hl">Iran Defies Hormuz Blockade</h2>
-            <p class="cell-fact">Trump warns of strikes; Israel&rsquo;s Eisenkot urges calm.</p>
+          <div class="mcard-body">
+            <div class="mcard-kicker mk-me">MIDDLE EAST · CRISIS</div>
+            <h2 class="mcard-hl">Iran Defies U.S. Blockade in Hormuz</h2>
+            <p class="mcard-desc">Tehran vows &ldquo;all means&rdquo;; Trump threatens ships &amp; new strikes.</p>
           </div>
         </article>
 
-        <article class="cell c-bl">
-          <div class="cell-art art-cop31">
+        <article class="mcard mc-cli">
+          <div class="mcard-art ma-cop31">
             <img src="{images['cop31']}" alt="COP31 climate talks collapse in Antalya" />
+            <span class="art-pin" style="background:#157770">4</span>
           </div>
-          <div class="cell-copy">
-            <div class="cell-kicker-row">
-              <span class="dot dot-climate"></span>
-              <span class="cell-kicker k-climate">GLOBAL · CLIMATE</span>
-            </div>
-            <h2 class="cell-hl">Fallout After COP31 Collapses</h2>
-            <p class="cell-fact">UN &amp; EU react to first climate summit failure since 2009.</p>
+          <div class="mcard-body">
+            <div class="mcard-kicker mk-cli">GLOBAL · CLIMATE</div>
+            <h2 class="mcard-hl">Fallout After COP31 Collapses</h2>
+            <p class="mcard-desc">UN, EU &amp; Pacific states react to 1st climate breakdown since 2009.</p>
           </div>
         </article>
 
-        <article class="cell c-br">
-          <div class="cell-art art-asia">
+        <article class="mcard mc-asia">
+          <div class="mcard-art ma-asia">
             <img src="{images['asia']}" alt="Lowy 2026 Asia Power Index balance" />
+            <span class="art-pin" style="background:#264B8A">5</span>
           </div>
-          <div class="cell-copy">
-            <div class="cell-kicker-row">
-              <span class="dot dot-asia"></span>
-              <span class="cell-kicker k-asia">ASIA-PACIFIC · POWER</span>
-            </div>
-            <h2 class="cell-hl">U.S.&ndash;China Gap Hits Asia Low</h2>
-            <p class="cell-fact">2026 Lowy Index narrows gap to 5.3 pts; India rises 3rd.</p>
+          <div class="mcard-body">
+            <div class="mcard-kicker mk-asia">ASIA-PACIFIC · POWER</div>
+            <h2 class="mcard-hl">U.S.&ndash;China Gap Hits Record Asia Low</h2>
+            <p class="mcard-desc">2026 Lowy Index narrows gap to 5.3 pts as India rises as 3rd pole.</p>
           </div>
         </article>
+      </section>
+
+      <section class="continent-grid">
+        <div class="region-box">
+          <div class="region-hdr rh-am"><span>AMERICAS</span><span class="region-count">NORTH &amp; LATIN</span></div>
+          <ul class="brief-list">{americas_items}</ul>
+        </div>
+
+        <div class="region-box">
+          <div class="region-hdr rh-eu"><span>EUROPE</span><span class="region-count">SECURITY &amp; POLICY</span></div>
+          <ul class="brief-list">{europe_items}</ul>
+        </div>
+
+        <div class="region-box">
+          <div class="region-hdr rh-me"><span>MIDDLE EAST</span><span class="region-count">DIPLOMACY &amp; ENERGY</span></div>
+          <ul class="brief-list">{middle_east_items}</ul>
+        </div>
+
+        <div class="region-box">
+          <div class="region-hdr rh-af"><span>AFRICA</span><span class="region-count">NORTH, WEST &amp; CENTRAL</span></div>
+          <ul class="brief-list">{africa_items}</ul>
+        </div>
+
+        <div class="region-box">
+          <div class="region-hdr rh-as"><span>ASIA</span><span class="region-count">MARKETS &amp; SOCIETY</span></div>
+          <ul class="brief-list">{asia_items}</ul>
+        </div>
+
+        <div class="region-box">
+          <div class="region-hdr rh-oc"><span>OCEANIA · SCIENCE · SPORTS</span><span class="region-count">GLOBAL</span></div>
+          <ul class="brief-list">{oceania_sci_items}</ul>
+        </div>
       </section>
     </main>
-
-    <footer class="ribbon">
-      <div class="ribbon-item">
-        <span class="ribbon-tag">IRAQ · PEACE</span>
-        <span>PKK vacates 14 bases in N. Iraq</span>
-      </div>
-      <div class="ribbon-sep"></div>
-      <div class="ribbon-item">
-        <span class="ribbon-tag">BANKS · AI</span>
-        <span>U.S. lenders add AI agent kill switches</span>
-      </div>
-    </footer>
   </div>
 </body>
 </html>
@@ -508,7 +598,7 @@ def optimize_output(raw_png: Path, out_path: Path, preview_path: Path) -> None:
     if img.size != (1024, 1024):
         img = img.resize((1024, 1024), Image.Resampling.LANCZOS)
 
-    png_candidate = raw_png.with_name("candidate_opt_v3.png")
+    png_candidate = raw_png.with_name("candidate_opt_v4.png")
     img.save(png_candidate, format="PNG", optimize=True, compress_level=9)
     png_size = png_candidate.stat().st_size
 
@@ -517,7 +607,7 @@ def optimize_output(raw_png: Path, out_path: Path, preview_path: Path) -> None:
         chosen = f"PNG ({png_size:,} bytes)"
     else:
         for quality in (94, 92, 90, 88):
-            jpg_candidate = raw_png.with_name("candidate_opt_v3.jpg")
+            jpg_candidate = raw_png.with_name("candidate_opt_v4.jpg")
             img.save(jpg_candidate, format="JPEG", quality=quality, subsampling=0, optimize=True)
             jpg_size = jpg_candidate.stat().st_size
             if jpg_size <= 950_000:
@@ -540,7 +630,9 @@ def main() -> None:
         "cop31": encode_image_data_uri(ASSETS_DIR / "card_cop31_climate.jpg"),
         "asia": encode_image_data_uri(ASSETS_DIR / "card_asia_power.jpg"),
     }
-    html = build_html(images)
+    map_svg = render_world_map_svg(width=398, height=204)
+    html = build_html(images, map_svg)
+
     with sync_playwright() as p:
         browser = None
         for kwargs in (
